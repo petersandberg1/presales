@@ -2,12 +2,12 @@ import React from "react";
 
 export function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-slate-900/60 shadow-xl backdrop-blur">
+    <div className="rounded-2xl border border-white/10
+                    bg-slate-800/70 shadow-xl backdrop-blur">
       {children}
     </div>
   );
 }
-
 export function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const { className = "", ...rest } = props;
   return (

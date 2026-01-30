@@ -11,4 +11,4 @@ describe("calculate", () => {
   it("kastar fel på ogiltig input", () => {
     expect(() => calculate({ trucks: 0, hoursPerDay: 20, costPerHour: 100 } as any)).toThrow();
   });
-});
+}); 
