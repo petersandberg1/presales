@@ -12,7 +12,11 @@ export default function LogoutButton() {
   }
 
   return (
-    <button aria-label="logout-button" onClick={logout} style={{ padding: 10 }}>
+    <button
+      aria-label="logout-button"
+      onClick={logout}
+      className="rounded-xl border border-white/10 bg-slate-900/50 px-4 py-2 text-sm font-medium text-slate-100 hover:bg-slate-900 transition"
+    >
       Logga ut
     </button>
   );
