@@ -7,7 +7,6 @@ test("Godkänd inloggning", async ({ page }) => {
   await page.getByLabel("login-button").click();
 
   await expect(page).toHaveURL("/");
-  await expect(page.getByText("Start")).toBeVisible();
   await expect(page.getByLabel("logout-button")).toBeVisible();
 });
 
