@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-test("Godkänd inloggning", async ({ page }) => {
+test("Successful login", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("username").fill("demo");
   await page.getByLabel("password").fill("demo123");
@@ -10,28 +10,31 @@ test("Godkänd inloggning", async ({ page }) => {
   await expect(page.getByLabel("logout-button")).toBeVisible();
 });
 
-test("Fel användarnamn eller lösenord visar feltext", async ({ page }) => {
+test("Invalid username or password shows error message", async ({ page }) => {
   await page.goto("/login");
   await page.getByLabel("username").fill("demo");
-  await page.getByLabel("password").fill("fel");
+  await page.getByLabel("password").fill("wrong");
   await page.getByLabel("login-button").click();
 
   await expect(page).toHaveURL("/login");
-await expect(page.getByTestId("login-error")).toHaveText("Fel användarnamn eller lösenord.");});
+  await expect(page.getByTestId("login-error")).toHaveText(
+    "Invalid username or password."
+  );
+});
 
-test("Logga ut leder tillbaka till inloggningssidan", async ({ page }) => {
-  // login
+test("Logout redirects to login page", async ({ page }) => {
+  // Login
   await page.goto("/login");
   await page.getByLabel("username").fill("demo");
   await page.getByLabel("password").fill("demo123");
   await page.getByLabel("login-button").click();
   await expect(page).toHaveURL("/");
 
-  // logout
+  // Logout
   await page.getByLabel("logout-button").click();
   await expect(page).toHaveURL("/login");
 
-  // skydd: gå till start igen ska redirecta till login
+  // Verify protection: navigating to home should redirect to login
   await page.goto("/");
   await expect(page).toHaveURL("/login");
 });
