@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = BodySchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ ok: false, message: "Ogiltig input." }, { status: 400 });
+    return NextResponse.json({ ok: false, message: "Invalid input." }, { status: 400 });
   }
 
   const { username, password } = parsed.data;

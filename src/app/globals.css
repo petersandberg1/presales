@@ -24,3 +24,86 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Custom Slider Styling */
+input[type="range"].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(to right,
+    rgb(47, 107, 255) 0%,
+    rgb(47, 107, 255) var(--slider-progress, 50%),
+    rgb(51, 65, 85) var(--slider-progress, 50%),
+    rgb(51, 65, 85) 100%
+  );
+  outline: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+input[type="range"].slider:hover {
+  background: linear-gradient(to right,
+    rgb(59, 130, 246) 0%,
+    rgb(59, 130, 246) var(--slider-progress, 50%),
+    rgb(71, 85, 105) var(--slider-progress, 50%),
+    rgb(71, 85, 105) 100%
+  );
+}
+
+/* Slider Thumb - WebKit */
+input[type="range"].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgb(59, 130, 246);
+  border: 3px solid rgb(30, 41, 59);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(47, 107, 255, 0.4);
+  transition: all 0.15s ease;
+}
+
+input[type="range"].slider::-webkit-slider-thumb:hover {
+  background: rgb(96, 165, 250);
+  box-shadow: 0 4px 12px rgba(47, 107, 255, 0.6);
+  transform: scale(1.1);
+}
+
+input[type="range"].slider::-webkit-slider-thumb:active {
+  background: rgb(147, 197, 253);
+  box-shadow: 0 2px 6px rgba(47, 107, 255, 0.8);
+  transform: scale(1.05);
+}
+
+/* Slider Thumb - Firefox */
+input[type="range"].slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgb(59, 130, 246);
+  border: 3px solid rgb(30, 41, 59);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(47, 107, 255, 0.4);
+  transition: all 0.15s ease;
+}
+
+input[type="range"].slider::-moz-range-thumb:hover {
+  background: rgb(96, 165, 250);
+  box-shadow: 0 4px 12px rgba(47, 107, 255, 0.6);
+  transform: scale(1.1);
+}
+
+input[type="range"].slider::-moz-range-thumb:active {
+  background: rgb(147, 197, 253);
+  box-shadow: 0 2px 6px rgba(47, 107, 255, 0.8);
+  transform: scale(1.05);
+}
+
+/* Slider Track - Firefox */
+input[type="range"].slider::-moz-range-track {
+  background: transparent;
+  border: none;
+}

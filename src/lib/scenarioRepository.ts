@@ -2,6 +2,11 @@
  * Scenario Repository - localStorage persistence for calculator scenarios
  */
 
+export interface ProductionPlanRow {
+  year: number;
+  tonnesPerYear: number;
+}
+
 export interface CalculatorScenario {
   id: string;
   name: string;
@@ -23,15 +28,13 @@ export interface CalculatorScenario {
   efficiency: number;
   utilization: number;
 
-  // Mine plan
-  totalMineTonnesPerYear: number;
+  // Production plan
+  productionPlan: ProductionPlanRow[];
 
   // Computed results (stored for display)
   cycleTimeSeconds: number;
   tonnesPerHour: number;
   tonnesPerTruckYear: number;
-  trucksRequired: number;
-  rawTrucks: number;
   effectiveFactor: number;
 }
 
