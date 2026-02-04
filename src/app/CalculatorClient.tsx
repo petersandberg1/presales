@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   calculateHaulCycleTime,
   calculateHaulProductivity,
@@ -12,6 +12,16 @@ import {
   type CalculatorScenario,
   type ProductionPlanRow,
 } from "@/lib/scenarioRepository";
+import {
+  calcCostBreakdown,
+  COST_MODEL_DEFAULTS,
+  type CostModelInput,
+  type YearlyDriver,
+} from "@/lib/cost/calcCost";
+
+function fmt(n: number): string {
+  return Math.round(n).toLocaleString();
+}
 
 interface HaulCycleInputs {
   distanceLoadedKm: number;
@@ -76,6 +86,11 @@ export default function CalculatorClient() {
   // Scenario management
   const [scenarios, setScenarios] = useState<CalculatorScenario[]>([]);
   const [scenarioName, setScenarioName] = useState("");
+  const [pdfNotes, setPdfNotes] = useState("");
+
+  // Cost model inputs
+  const [costModel, setCostModel] = useState<CostModelInput>(COST_MODEL_DEFAULTS);
+  const [reportingCurrency, setReportingCurrency] = useState<"EUR" | "SEK">("EUR");
 
   // Load scenarios on mount
   useEffect(() => {
@@ -101,6 +116,26 @@ export default function CalculatorClient() {
     utilizationPercent,
     productionPlan,
   ]);
+
+  // Compute cost breakdown reactively (works in both dynamic and static modes)
+  const costBreakdown = useMemo(() => {
+    if (!results) return null;
+    try {
+      const effectiveCyclesPerYear =
+        ((365 * 24 * 3600) / results.cycleTimeSeconds) * results.effectiveFactor;
+      const kmPerTruckYear =
+        (haulCycle.distanceLoadedKm + haulCycle.distanceUnloadedKm) *
+        effectiveCyclesPerYear;
+      const drivers: YearlyDriver[] = results.yearlyFleet.map((yf) => ({
+        year: yf.year,
+        fleetSize: yf.trucksRequired,
+        kmPerYear: yf.trucksRequired * kmPerTruckYear,
+      }));
+      return calcCostBreakdown(costModel, drivers);
+    } catch {
+      return null;
+    }
+  }, [results, costModel, haulCycle.distanceLoadedKm, haulCycle.distanceUnloadedKm]);
 
   // Update production year Mt value
   function updateProductionYearMt(index: number, mt: number) {
@@ -215,6 +250,7 @@ export default function CalculatorClient() {
         efficiency: efficiencyPercent / 100,
         utilization: utilizationPercent / 100,
         productionPlan,
+        costModel,
         cycleTimeSeconds: results.cycleTimeSeconds,
         tonnesPerHour: results.tonnesPerHour,
         tonnesPerTruckYear: results.tonnesPerTruckYear,
@@ -247,6 +283,7 @@ export default function CalculatorClient() {
     setProductionPlan(
       scenario.productionPlan || [{ year: 2026, tonnesPerYear: 5_000_000 }]
     );
+    setCostModel(scenario.costModel || COST_MODEL_DEFAULTS);
 
     setError(null);
   }
@@ -261,34 +298,65 @@ export default function CalculatorClient() {
     }
   }
 
+  // Export current results to PDF
+  async function onExportPdf() {
+    if (!results) return;
+    const { generateFleetPdf } = await import("@/lib/pdfExport");
+    const blob = generateFleetPdf({
+      distanceLoadedKm: haulCycle.distanceLoadedKm,
+      distanceUnloadedKm: haulCycle.distanceUnloadedKm,
+      speedLoaded: haulCycle.speedLoaded,
+      speedUnloaded: haulCycle.speedUnloaded,
+      loadingTime: haulCycle.loadingTime,
+      unloadingTime: haulCycle.unloadingTime,
+      payloadTonnes,
+      availabilityPercent,
+      efficiencyPercent,
+      utilizationPercent,
+      cycleTimeSeconds: results.cycleTimeSeconds,
+      tonnesPerHour: results.tonnesPerHour,
+      tonnesPerTruckYear: results.tonnesPerTruckYear,
+      effectiveFactor: results.effectiveFactor,
+      yearlyFleet: results.yearlyFleet,
+      scenarioName: scenarioName.trim() || undefined,
+      notes: pdfNotes.trim() || undefined,
+      generatedDate: new Date().toISOString(),
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "fleet-sizing-report.pdf";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100">
+    <div className="min-h-screen bg-[#0d1117] text-[#e6edf3]">
       <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8">
         {/* Header with Mode Toggle */}
-        <div className="mb-8 flex items-center justify-between border-b-2 border-brand-500/20 pb-6">
+        <div className="mb-8 flex items-center justify-between border-b border-[#30363d] pb-6">
           <div>
-            <div className="flex items-center gap-3">
-              <div className="h-3 w-3 rounded-full bg-brand-500 shadow-[0_0_20px_rgba(47,107,255,0.5)]" />
-              <h1 className="text-4xl font-bold tracking-tight text-slate-50">
-                Fleet Sizing Calculator
-              </h1>
-            </div>
-            <p className="mt-2 text-lg text-slate-400">
+            <h1 className="text-3xl font-bold tracking-tight text-[#e6edf3]">
+              Fleet Sizing Calculator
+            </h1>
+            <p className="mt-1 text-sm text-[#8b949e]">
               Configure haul parameters and production targets
             </p>
           </div>
 
           {/* Mode Toggle */}
           <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-slate-400">Mode:</span>
-            <div className="flex gap-2 rounded-xl bg-slate-800/80 p-1.5">
+            <span className="text-sm font-semibold text-[#8b949e]">Mode:</span>
+            <div className="flex gap-1 rounded-md bg-[#161b22] border border-[#30363d] p-1">
               <button
                 onClick={() => setMode("dynamic")}
                 className={[
-                  "rounded-lg px-6 py-2.5 text-sm font-bold transition-all",
+                  "rounded-md px-5 py-1.5 text-sm font-semibold transition-all",
                   mode === "dynamic"
-                    ? "bg-brand-500 text-white shadow-lg shadow-brand-500/30"
-                    : "text-slate-400 hover:text-slate-300",
+                    ? "bg-brand-500 text-white"
+                    : "text-[#8b949e] hover:text-[#e6edf3]",
                 ].join(" ")}
               >
                 Live
@@ -296,10 +364,10 @@ export default function CalculatorClient() {
               <button
                 onClick={() => setMode("static")}
                 className={[
-                  "rounded-lg px-6 py-2.5 text-sm font-bold transition-all",
+                  "rounded-md px-5 py-1.5 text-sm font-semibold transition-all",
                   mode === "static"
-                    ? "bg-brand-500 text-white shadow-lg shadow-brand-500/30"
-                    : "text-slate-400 hover:text-slate-300",
+                    ? "bg-brand-500 text-white"
+                    : "text-[#8b949e] hover:text-[#e6edf3]",
                 ].join(" ")}
               >
                 Manual
@@ -314,11 +382,11 @@ export default function CalculatorClient() {
           <div className="space-y-6 xl:col-span-2">
             {/* Production Targets */}
             <Card>
-              <div className="border-b-2 border-white/20 bg-gradient-to-r from-slate-800 to-slate-800/90 px-6 py-4">
-                <h2 className="text-2xl font-bold text-slate-50">
+              <div className="border-b border-[#30363d] px-6 py-4">
+                <h2 className="text-2xl font-bold text-[#e6edf3]">
                   Production Targets
                 </h2>
-                <p className="mt-1 text-sm text-slate-400">
+                <p className="mt-1 text-sm text-[#8b949e]">
                   Annual production by year (Million tonnes)
                 </p>
               </div>
@@ -327,7 +395,7 @@ export default function CalculatorClient() {
                   {productionPlan.map((plan, index) => (
                     <div key={index} className="flex items-center gap-4">
                       <div
-                        className="w-20 text-sm font-bold text-slate-300"
+                        className="w-20 text-sm font-bold text-[#c9d1d9]"
                         aria-label={`plan-year-${index}`}
                         data-year={plan.year}
                       >
@@ -335,10 +403,10 @@ export default function CalculatorClient() {
                       </div>
                       <div className="flex-1">
                         <div className="mb-2 flex items-baseline justify-between">
-                          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                          <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                             Production
                           </span>
-                          <span className="text-lg font-bold text-brand-400">
+                          <span className="text-lg font-bold text-[#58a6ff]">
                             {(plan.tonnesPerYear / 1_000_000).toFixed(1)} Mt
                           </span>
                         </div>
@@ -358,7 +426,7 @@ export default function CalculatorClient() {
                       {productionPlan.length > 1 && (
                         <button
                           onClick={() => removeProductionYear(index)}
-                          className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-400 hover:bg-red-950/50 hover:text-red-400"
+                          className="rounded-md px-3 py-2 text-sm font-semibold text-[#8b949e] hover:bg-red-950/30 hover:text-red-400"
                         >
                           Remove
                         </button>
@@ -368,7 +436,7 @@ export default function CalculatorClient() {
                 </div>
                 <Button
                   onClick={addProductionYear}
-                  className="mt-6 border-2 border-brand-500/40 bg-brand-500/20 text-brand-300 shadow-brand-500/10 hover:bg-brand-500/30"
+                  className="mt-6 border border-[#30363d] bg-[#1c2333] text-[#58a6ff] hover:bg-[#243040]"
                 >
                   Add Year
                 </Button>
@@ -377,8 +445,8 @@ export default function CalculatorClient() {
 
             {/* Haul Cycle Parameters */}
             <Card>
-              <div className="border-b-2 border-white/20 bg-gradient-to-r from-slate-800 to-slate-800/90 px-6 py-4">
-                <h2 className="text-2xl font-bold text-slate-50">
+              <div className="border-b border-[#30363d] px-6 py-4">
+                <h2 className="text-2xl font-bold text-[#e6edf3]">
                   Haul Cycle Parameters
                 </h2>
               </div>
@@ -387,10 +455,10 @@ export default function CalculatorClient() {
                   {/* Distance Loaded */}
                   <div>
                     <div className="mb-2 flex items-baseline justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                         Distance Loaded
                       </span>
-                      <span className="text-lg font-bold text-slate-200">
+                      <span className="text-lg font-bold text-[#e6edf3]">
                         {haulCycle.distanceLoadedKm.toFixed(2)} km
                       </span>
                     </div>
@@ -414,10 +482,10 @@ export default function CalculatorClient() {
                   {/* Distance Unloaded */}
                   <div>
                     <div className="mb-2 flex items-baseline justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                         Distance Unloaded
                       </span>
-                      <span className="text-lg font-bold text-slate-200">
+                      <span className="text-lg font-bold text-[#e6edf3]">
                         {haulCycle.distanceUnloadedKm.toFixed(2)} km
                       </span>
                     </div>
@@ -441,10 +509,10 @@ export default function CalculatorClient() {
                   {/* Speed Loaded */}
                   <div>
                     <div className="mb-2 flex items-baseline justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                         Speed Loaded
                       </span>
-                      <span className="text-lg font-bold text-slate-200">
+                      <span className="text-lg font-bold text-[#e6edf3]">
                         {haulCycle.speedLoaded} km/h
                       </span>
                     </div>
@@ -468,10 +536,10 @@ export default function CalculatorClient() {
                   {/* Speed Unloaded */}
                   <div>
                     <div className="mb-2 flex items-baseline justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                         Speed Unloaded
                       </span>
-                      <span className="text-lg font-bold text-slate-200">
+                      <span className="text-lg font-bold text-[#e6edf3]">
                         {haulCycle.speedUnloaded} km/h
                       </span>
                     </div>
@@ -495,10 +563,10 @@ export default function CalculatorClient() {
                   {/* Loading Time */}
                   <div>
                     <div className="mb-2 flex items-baseline justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                         Loading Time
                       </span>
-                      <span className="text-lg font-bold text-slate-200">
+                      <span className="text-lg font-bold text-[#e6edf3]">
                         {haulCycle.loadingTime} sec
                       </span>
                     </div>
@@ -523,10 +591,10 @@ export default function CalculatorClient() {
                   {/* Unloading Time */}
                   <div>
                     <div className="mb-2 flex items-baseline justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                         Unloading Time
                       </span>
-                      <span className="text-lg font-bold text-slate-200">
+                      <span className="text-lg font-bold text-[#e6edf3]">
                         {haulCycle.unloadingTime} sec
                       </span>
                     </div>
@@ -553,8 +621,8 @@ export default function CalculatorClient() {
 
             {/* Truck & Operational Factors */}
             <Card>
-              <div className="border-b-2 border-white/20 bg-gradient-to-r from-slate-800 to-slate-800/90 px-6 py-4">
-                <h2 className="text-2xl font-bold text-slate-50">
+              <div className="border-b border-[#30363d] px-6 py-4">
+                <h2 className="text-2xl font-bold text-[#e6edf3]">
                   Truck Capacity & Operational Factors
                 </h2>
               </div>
@@ -563,10 +631,10 @@ export default function CalculatorClient() {
                   {/* Payload */}
                   <div>
                     <div className="mb-2 flex items-baseline justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                         Payload Capacity
                       </span>
-                      <span className="text-lg font-bold text-slate-200">
+                      <span className="text-lg font-bold text-[#e6edf3]">
                         {payloadTonnes} tonnes
                       </span>
                     </div>
@@ -585,10 +653,10 @@ export default function CalculatorClient() {
                   {/* Availability */}
                   <div>
                     <div className="mb-2 flex items-baseline justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                         Availability
                       </span>
-                      <span className="text-lg font-bold text-slate-200">
+                      <span className="text-lg font-bold text-[#e6edf3]">
                         {availabilityPercent}%
                       </span>
                     </div>
@@ -609,10 +677,10 @@ export default function CalculatorClient() {
                   {/* Efficiency */}
                   <div>
                     <div className="mb-2 flex items-baseline justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                         Efficiency
                       </span>
-                      <span className="text-lg font-bold text-slate-200">
+                      <span className="text-lg font-bold text-[#e6edf3]">
                         {efficiencyPercent}%
                       </span>
                     </div>
@@ -633,10 +701,10 @@ export default function CalculatorClient() {
                   {/* Utilization */}
                   <div>
                     <div className="mb-2 flex items-baseline justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
                         Utilization
                       </span>
-                      <span className="text-lg font-bold text-slate-200">
+                      <span className="text-lg font-bold text-[#e6edf3]">
                         {utilizationPercent}%
                       </span>
                     </div>
@@ -657,6 +725,297 @@ export default function CalculatorClient() {
               </div>
             </Card>
 
+            {/* Cost Model */}
+            <Card>
+              <div className="border-b border-[#30363d] px-6 py-4">
+                <h2 className="text-2xl font-bold text-[#e6edf3]">
+                  Cost Model
+                </h2>
+                <p className="mt-1 text-sm text-[#8b949e]">
+                  CAPEX & OPEX parameters
+                </p>
+              </div>
+              <div className="p-6">
+                {/* FMS Toggle */}
+                <div className="mb-6 flex items-center justify-between rounded-md border border-[#30363d] bg-[#0d1117] p-4">
+                  <div>
+                    <div className="text-sm font-semibold text-[#e6edf3]">
+                      Fleet Management System (FMS)
+                    </div>
+                    <div className="mt-0.5 text-xs text-[#8b949e]">
+                      One-time deployment + annual license
+                    </div>
+                  </div>
+                  <div
+                    onClick={() =>
+                      setCostModel((prev) => ({
+                        ...prev,
+                        includeFMS: !prev.includeFMS,
+                      }))
+                    }
+                    className={[
+                      "relative inline-flex h-6 w-11 items-center rounded-full cursor-pointer transition-colors duration-200",
+                      costModel.includeFMS ? "bg-brand-500" : "bg-[#30363d]",
+                    ].join(" ")}
+                  >
+                    <span
+                      className={[
+                        "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform duration-200",
+                        costModel.includeFMS ? "translate-x-6" : "translate-x-1",
+                      ].join(" ")}
+                    />
+                  </div>
+                </div>
+
+                {/* Main cost sliders */}
+                <div className="grid gap-6 md:grid-cols-2">
+                  {/* Truck Price */}
+                  <div>
+                    <div className="mb-2 flex items-baseline justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                        Truck Price
+                      </span>
+                      <span className="text-lg font-bold text-[#e6edf3]">
+                        {(costModel.truckPriceEUR / 1000).toFixed(0)}k EUR
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="50000"
+                      max="1500000"
+                      step="25000"
+                      value={costModel.truckPriceEUR}
+                      onChange={(e) =>
+                        setCostModel((prev) => ({
+                          ...prev,
+                          truckPriceEUR: Number(e.target.value),
+                        }))
+                      }
+                      className="slider w-full"
+                    />
+                  </div>
+
+                  {/* Truck License */}
+                  <div>
+                    <div className="mb-2 flex items-baseline justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                        License / Truck / Year
+                      </span>
+                      <span className="text-lg font-bold text-[#e6edf3]">
+                        {(costModel.truckLicenseEURPerYear / 1000).toFixed(0)}k EUR
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="5000"
+                      max="200000"
+                      step="5000"
+                      value={costModel.truckLicenseEURPerYear}
+                      onChange={(e) =>
+                        setCostModel((prev) => ({
+                          ...prev,
+                          truckLicenseEURPerYear: Number(e.target.value),
+                        }))
+                      }
+                      className="slider w-full"
+                    />
+                  </div>
+
+                  {/* Service Cost */}
+                  <div>
+                    <div className="mb-2 flex items-baseline justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                        Service Cost
+                      </span>
+                      <span className="text-lg font-bold text-[#e6edf3]">
+                        {costModel.serviceSEKPerKm.toFixed(1)} SEK/km
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="15"
+                      step="0.5"
+                      value={costModel.serviceSEKPerKm}
+                      onChange={(e) =>
+                        setCostModel((prev) => ({
+                          ...prev,
+                          serviceSEKPerKm: Number(e.target.value),
+                        }))
+                      }
+                      className="slider w-full"
+                    />
+                  </div>
+
+                  {/* Fuel Cost */}
+                  <div>
+                    <div className="mb-2 flex items-baseline justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                        Fuel Cost
+                      </span>
+                      <span className="text-lg font-bold text-[#e6edf3]">
+                        {costModel.fuelSEKPerKm.toFixed(1)} SEK/km
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="25"
+                      step="0.5"
+                      value={costModel.fuelSEKPerKm}
+                      onChange={(e) =>
+                        setCostModel((prev) => ({
+                          ...prev,
+                          fuelSEKPerKm: Number(e.target.value),
+                        }))
+                      }
+                      className="slider w-full"
+                    />
+                  </div>
+
+                  {/* Deployment One-Time */}
+                  <div>
+                    <div className="mb-2 flex items-baseline justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                        Deployment (one-time)
+                      </span>
+                      <span className="text-lg font-bold text-[#e6edf3]">
+                        {(costModel.deploymentOneTimeEUR / 1000).toFixed(0)}k EUR
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="1000000"
+                      step="25000"
+                      value={costModel.deploymentOneTimeEUR}
+                      onChange={(e) =>
+                        setCostModel((prev) => ({
+                          ...prev,
+                          deploymentOneTimeEUR: Number(e.target.value),
+                        }))
+                      }
+                      className="slider w-full"
+                    />
+                  </div>
+
+                  {/* FX Rate */}
+                  <div>
+                    <div className="mb-2 flex items-baseline justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                        FX Rate
+                      </span>
+                      <span className="text-lg font-bold text-[#e6edf3]">
+                        {costModel.fxSEKPerEUR.toFixed(1)} SEK/EUR
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="5"
+                      max="20"
+                      step="0.1"
+                      value={costModel.fxSEKPerEUR}
+                      onChange={(e) =>
+                        setCostModel((prev) => ({
+                          ...prev,
+                          fxSEKPerEUR: Number(e.target.value),
+                        }))
+                      }
+                      className="slider w-full"
+                    />
+                  </div>
+                </div>
+
+                {/* FMS conditional inputs */}
+                {costModel.includeFMS && (
+                  <div className="mt-6 rounded-md border border-[#30363d] bg-[#0d1117] p-4">
+                    <div className="mb-4 text-xs font-bold uppercase tracking-wider text-[#58a6ff]">
+                      FMS Details
+                    </div>
+                    <div className="grid gap-6 md:grid-cols-3">
+                      {/* FMS Annual License */}
+                      <div>
+                        <div className="mb-2 flex items-baseline justify-between">
+                          <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                            Annual License
+                          </span>
+                          <span className="text-lg font-bold text-[#e6edf3]">
+                            {(costModel.fmsAnnualLicenseEUR / 1000).toFixed(0)}k EUR
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="10000"
+                          max="500000"
+                          step="10000"
+                          value={costModel.fmsAnnualLicenseEUR}
+                          onChange={(e) =>
+                            setCostModel((prev) => ({
+                              ...prev,
+                              fmsAnnualLicenseEUR: Number(e.target.value),
+                            }))
+                          }
+                          className="slider w-full"
+                        />
+                      </div>
+
+                      {/* FMS Deployment One-Time */}
+                      <div>
+                        <div className="mb-2 flex items-baseline justify-between">
+                          <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                            Deploy (one-time)
+                          </span>
+                          <span className="text-lg font-bold text-[#e6edf3]">
+                            {(costModel.fmsDeploymentOneTimeEUR / 1000).toFixed(0)}k EUR
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="1000000"
+                          step="25000"
+                          value={costModel.fmsDeploymentOneTimeEUR}
+                          onChange={(e) =>
+                            setCostModel((prev) => ({
+                              ...prev,
+                              fmsDeploymentOneTimeEUR: Number(e.target.value),
+                            }))
+                          }
+                          className="slider w-full"
+                        />
+                      </div>
+
+                      {/* FMS HW One-Time */}
+                      <div>
+                        <div className="mb-2 flex items-baseline justify-between">
+                          <span className="text-xs font-semibold uppercase tracking-wider text-[#8b949e]">
+                            HW (one-time)
+                          </span>
+                          <span className="text-lg font-bold text-[#e6edf3]">
+                            {(costModel.fmsHwOneTimeEUR / 1000).toFixed(0)}k EUR
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="500000"
+                          step="25000"
+                          value={costModel.fmsHwOneTimeEUR}
+                          onChange={(e) =>
+                            setCostModel((prev) => ({
+                              ...prev,
+                              fmsHwOneTimeEUR: Number(e.target.value),
+                            }))
+                          }
+                          className="slider w-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Card>
+
             {/* Calculate Button - Only in Static Mode */}
             {mode === "static" && (
               <Button
@@ -671,7 +1030,7 @@ export default function CalculatorClient() {
 
             {/* Error Display */}
             {error && (
-              <div className="rounded-xl border-2 border-red-500/50 bg-red-950/50 p-4 shadow-lg">
+              <div className="rounded-md border border-red-900/50 bg-red-950/30 p-4">
                 <ErrorText>
                   <span data-testid="calc-error">{error}</span>
                 </ErrorText>
@@ -683,15 +1042,24 @@ export default function CalculatorClient() {
           <div className="space-y-6">
             {/* Fleet Requirements Table */}
             <Card>
-              <div className="border-b-2 border-white/20 bg-gradient-to-r from-slate-800 to-slate-800/90 px-6 py-4">
-                <h2 className="text-2xl font-bold text-slate-50">
+              <div className="border-b border-[#30363d] px-6 py-4 flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-[#e6edf3]">
                   Fleet Requirements
                 </h2>
+                <Button
+                  aria-label="export-pdf"
+                  data-testid="export-pdf-button"
+                  onClick={onExportPdf}
+                  disabled={!results}
+                  className="border border-[#30363d] bg-[#1c2333] text-[#58a6ff] hover:bg-[#243040] px-4 py-2 text-sm"
+                >
+                  Export PDF
+                </Button>
               </div>
               <div className="p-6">
                 {!results && (
                   <div className="py-12 text-center">
-                    <p className="text-slate-400">
+                    <p className="text-[#8b949e]">
                       {mode === "dynamic"
                         ? "Adjust inputs to see results"
                         : "Click Calculate to see results"}
@@ -712,14 +1080,14 @@ export default function CalculatorClient() {
                     <div className="overflow-x-auto">
                       <table className="w-full">
                         <thead>
-                          <tr className="border-b-2 border-brand-500/30">
-                            <th className="pb-3 pr-3 text-left text-xs font-bold uppercase tracking-wider text-slate-400">
+                          <tr className="border-b border-[#30363d]">
+                            <th className="pb-3 pr-3 text-left text-xs font-bold uppercase tracking-wider text-[#8b949e]">
                               Year
                             </th>
-                            <th className="pb-3 px-3 text-right text-xs font-bold uppercase tracking-wider text-slate-400">
+                            <th className="pb-3 px-3 text-right text-xs font-bold uppercase tracking-wider text-[#8b949e]">
                               Production
                             </th>
-                            <th className="pb-3 pl-3 text-right text-xs font-bold uppercase tracking-wider text-brand-400">
+                            <th className="pb-3 pl-3 text-right text-xs font-bold uppercase tracking-wider text-[#58a6ff]">
                               Trucks
                             </th>
                           </tr>
@@ -728,26 +1096,26 @@ export default function CalculatorClient() {
                           {results.yearlyFleet.map((year) => (
                             <tr
                               key={year.year}
-                              className="group border-b border-white/10 transition-colors hover:bg-white/5"
+                              className="group border-b border-[#30363d] transition-colors hover:bg-[#1c2333]"
                             >
-                              <td className="py-4 pr-3 text-lg font-bold text-slate-200">
+                              <td className="py-4 pr-3 text-lg font-bold text-[#e6edf3]">
                                 {year.year}
                               </td>
                               <td className="py-4 px-3 text-right">
-                                <div className="text-base font-semibold text-slate-300">
+                                <div className="text-base font-semibold text-[#c9d1d9]">
                                   {(year.tonnesPerYear / 1_000_000).toFixed(1)}
                                 </div>
-                                <div className="text-xs text-slate-500">Mt/year</div>
+                                <div className="text-xs text-[#484f58]">Mt/year</div>
                               </td>
                               <td
                                 className="py-4 pl-3 text-right"
                                 data-testid={`trucks-required-${year.year}`}
                               >
-                                <div className="inline-flex flex-col items-end rounded-lg bg-gradient-to-br from-brand-500/20 to-brand-600/20 px-4 py-2 shadow-lg shadow-brand-500/10 transition-all group-hover:shadow-brand-500/20">
-                                  <span className="text-3xl font-black text-brand-300">
+                                <div className="inline-flex flex-col items-end rounded-md bg-[#1c2333] px-4 py-2">
+                                  <span className="text-3xl font-black text-[#58a6ff]">
                                     {year.trucksRequired}
                                   </span>
-                                  <span className="text-xs font-semibold text-brand-400/70">
+                                  <span className="text-xs font-semibold text-[#484f58]">
                                     trucks
                                   </span>
                                 </div>
@@ -759,51 +1127,65 @@ export default function CalculatorClient() {
                     </div>
 
                     {/* Supporting Metrics */}
-                    <div className="grid grid-cols-2 gap-4 rounded-lg border-2 border-white/10 bg-slate-900/50 p-4">
+                    <div className="grid grid-cols-2 gap-4 rounded-md border border-[#30363d] bg-[#0d1117] p-4">
                       <div>
-                        <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        <div className="text-xs font-bold uppercase tracking-wider text-[#8b949e]">
                           Cycle Time
                         </div>
                         <div
-                          className="mt-1 text-xl font-bold text-slate-200"
+                          className="mt-1 text-xl font-bold text-[#e6edf3]"
                           data-testid="cycle-time-seconds"
                         >
                           {results.cycleTimeSeconds.toFixed(0)}s
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        <div className="text-xs font-bold uppercase tracking-wider text-[#8b949e]">
                           Tonnes/Hour
                         </div>
                         <div
-                          className="mt-1 text-xl font-bold text-slate-200"
+                          className="mt-1 text-xl font-bold text-[#e6edf3]"
                           data-testid="tonnes-per-hour"
                         >
                           {results.tonnesPerHour.toFixed(1)}
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        <div className="text-xs font-bold uppercase tracking-wider text-[#8b949e]">
                           Annual Cap/Truck
                         </div>
                         <div
-                          className="mt-1 text-xl font-bold text-slate-200"
+                          className="mt-1 text-xl font-bold text-[#e6edf3]"
                           data-testid="tonnes-per-truck-year"
                         >
                           {(results.tonnesPerTruckYear / 1000).toFixed(0)}k t
                         </div>
                       </div>
                       <div>
-                        <div className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                        <div className="text-xs font-bold uppercase tracking-wider text-[#8b949e]">
                           Effective Factor
                         </div>
                         <div
-                          className="mt-1 text-xl font-bold text-slate-200"
+                          className="mt-1 text-xl font-bold text-[#e6edf3]"
                           data-testid="effective-factor-percent"
                         >
                           {Math.round(results.effectiveFactor * 100)}%
                         </div>
                       </div>
+                    </div>
+
+                    {/* PDF Export Notes */}
+                    <div>
+                      <Label>Export Notes (optional)</Label>
+                      <textarea
+                        aria-label="pdf-notes"
+                        data-testid="pdf-notes-input"
+                        value={pdfNotes}
+                        onChange={(e) => setPdfNotes(e.target.value)}
+                        placeholder="Add assumptions, disclaimers, or internal notes..."
+                        rows={3}
+                        className="mt-1 w-full rounded-md border border-[#30363d] bg-[#0d1117] px-4 py-2.5 text-[#e6edf3] placeholder:text-[#484f58] focus:outline-none focus:ring-2 focus:ring-brand-500/60 focus:border-brand-500 transition-all duration-150 resize-none"
+                      />
                     </div>
                   </div>
                 )}
@@ -812,8 +1194,8 @@ export default function CalculatorClient() {
 
             {/* Scenario Management */}
             <Card>
-              <div className="border-b-2 border-white/20 bg-gradient-to-r from-slate-800 to-slate-800/90 px-6 py-4">
-                <h2 className="text-xl font-bold text-slate-50">Scenarios</h2>
+              <div className="border-b border-[#30363d] px-6 py-4">
+                <h2 className="text-xl font-bold text-[#e6edf3]">Scenarios</h2>
               </div>
               <div className="p-6">
                 {/* Save Scenario */}
@@ -829,7 +1211,7 @@ export default function CalculatorClient() {
                   <Button
                     aria-label="save-scenario"
                     onClick={onSaveScenario}
-                    className="w-full border-2 border-brand-500/40 bg-brand-500/20 text-brand-300 shadow-brand-500/10 hover:bg-brand-500/30"
+                    className="w-full border border-[#30363d] bg-[#1c2333] text-[#58a6ff] hover:bg-[#243040]"
                     disabled={!results || !scenarioName.trim()}
                   >
                     Save Current Scenario
@@ -838,25 +1220,25 @@ export default function CalculatorClient() {
 
                 {/* Scenario List */}
                 {scenarios.length === 0 && (
-                  <p className="text-sm text-slate-400">No saved scenarios yet.</p>
+                  <p className="text-sm text-[#8b949e]">No saved scenarios yet.</p>
                 )}
 
                 {scenarios.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-sm font-bold text-slate-300">
+                    <div className="text-sm font-bold text-[#c9d1d9]">
                       Saved Scenarios
                     </div>
                     <div className="max-h-80 space-y-2 overflow-y-auto">
                       {scenarios.map((scenario) => (
                         <div
                           key={scenario.id}
-                          className="flex items-start gap-3 rounded-lg border-2 border-white/20 bg-slate-900/70 p-3 shadow-lg"
+                          className="flex items-start gap-3 rounded-md border border-[#30363d] bg-[#0d1117] p-3"
                         >
                           <div className="flex-1">
-                            <div className="font-bold text-slate-200">
+                            <div className="font-bold text-[#e6edf3]">
                               {scenario.name}
                             </div>
-                            <div className="mt-1 text-xs text-slate-400">
+                            <div className="mt-1 text-xs text-[#8b949e]">
                               {new Date(scenario.createdAt).toLocaleDateString()}{" "}
                               • {scenario.productionPlan?.length || 0} years
                             </div>
@@ -865,14 +1247,14 @@ export default function CalculatorClient() {
                             <button
                               aria-label={`load-scenario-${scenario.id}`}
                               onClick={() => onLoadScenario(scenario)}
-                              className="rounded-lg bg-brand-500/30 px-3 py-1.5 text-sm font-bold text-brand-300 shadow-lg hover:bg-brand-500/40"
+                              className="rounded-md bg-[#1c2333] border border-[#30363d] px-3 py-1.5 text-sm font-bold text-[#58a6ff] hover:bg-[#243040]"
                             >
                               Load
                             </button>
                             <button
                               aria-label={`delete-scenario-${scenario.id}`}
                               onClick={() => onDeleteScenario(scenario.id)}
-                              className="rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-400 hover:bg-red-950/50 hover:text-red-400"
+                              className="rounded-md px-2 py-1.5 text-sm font-semibold text-[#8b949e] hover:bg-red-950/30 hover:text-red-400"
                             >
                               ×
                             </button>
@@ -886,6 +1268,152 @@ export default function CalculatorClient() {
             </Card>
           </div>
         </div>
+
+        {/* Cost Breakdown – full width below main grid */}
+        {costBreakdown && (
+          <Card>
+            <div className="border-b border-[#30363d] px-6 py-4 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-[#e6edf3]">
+                  Cost Breakdown
+                </h2>
+                <p className="mt-1 text-sm text-[#8b949e]">
+                  CAPEX &amp; OPEX per year
+                </p>
+              </div>
+              {/* Currency Toggle */}
+              <div className="flex gap-1 rounded-md bg-[#161b22] border border-[#30363d] p-1">
+                <button
+                  onClick={() => setReportingCurrency("EUR")}
+                  className={[
+                    "rounded-md px-4 py-1.5 text-sm font-semibold transition-all",
+                    reportingCurrency === "EUR"
+                      ? "bg-brand-500 text-white"
+                      : "text-[#8b949e] hover:text-[#e6edf3]",
+                  ].join(" ")}
+                >
+                  EUR
+                </button>
+                <button
+                  onClick={() => setReportingCurrency("SEK")}
+                  className={[
+                    "rounded-md px-4 py-1.5 text-sm font-semibold transition-all",
+                    reportingCurrency === "SEK"
+                      ? "bg-brand-500 text-white"
+                      : "text-[#8b949e] hover:text-[#e6edf3]",
+                  ].join(" ")}
+                >
+                  SEK
+                </button>
+              </div>
+            </div>
+            <div className="overflow-x-auto p-6">
+              <table className="w-full min-w-[900px]">
+                <thead>
+                  <tr className="border-b border-[#30363d]">
+                    <th className="pb-3 pr-3 text-left text-xs font-bold uppercase tracking-wider text-[#8b949e]">
+                      Year
+                    </th>
+                    <th className="pb-3 px-3 text-right text-xs font-bold uppercase tracking-wider text-[#8b949e]">
+                      Fleet
+                    </th>
+                    <th className="pb-3 px-3 text-right text-xs font-bold uppercase tracking-wider text-[#8b949e]">
+                      km/yr
+                    </th>
+                    <th className="pb-3 px-3 text-right text-xs font-bold uppercase tracking-wider text-[#58a6ff]">
+                      CAPEX Trucks{" "}
+                      <span className="text-[#484f58]">(EUR)</span>
+                    </th>
+                    <th className="pb-3 px-3 text-right text-xs font-bold uppercase tracking-wider text-[#58a6ff]">
+                      CAPEX One-time{" "}
+                      <span className="text-[#484f58]">(EUR)</span>
+                    </th>
+                    <th className="pb-3 px-3 text-right text-xs font-bold uppercase tracking-wider text-[#8b949e]">
+                      OPEX License{" "}
+                      <span className="text-[#484f58]">(EUR)</span>
+                    </th>
+                    <th className="pb-3 px-3 text-right text-xs font-bold uppercase tracking-wider text-[#8b949e]">
+                      OPEX Variable{" "}
+                      <span className="text-[#484f58]">(SEK)</span>
+                    </th>
+                    <th className="pb-3 pl-3 text-right text-xs font-bold uppercase tracking-wider text-[#e6edf3]">
+                      Total{" "}
+                      <span className="text-[#58a6ff]">
+                        ({reportingCurrency})
+                      </span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {costBreakdown.rows.map((row) => (
+                    <tr
+                      key={row.year}
+                      className="border-b border-[#30363d] transition-colors hover:bg-[#1c2333]"
+                    >
+                      <td className="py-3 pr-3 text-sm font-bold text-[#e6edf3]">
+                        {row.year}
+                      </td>
+                      <td className="py-3 px-3 text-right text-sm text-[#c9d1d9]">
+                        {row.fleetSize}
+                      </td>
+                      <td className="py-3 px-3 text-right text-sm text-[#c9d1d9]">
+                        {fmt(row.kmPerYear)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-sm font-semibold text-[#58a6ff]">
+                        {fmt(row.capexTrucks)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-sm font-semibold text-[#58a6ff]">
+                        {fmt(row.capexDeployment + row.capexFms)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-sm text-[#c9d1d9]">
+                        {fmt(row.opexTotalEUR)}
+                      </td>
+                      <td className="py-3 px-3 text-right text-sm text-[#c9d1d9]">
+                        {fmt(row.opexTotalSEK)}
+                      </td>
+                      <td className="py-3 pl-3 text-right text-sm font-bold text-[#e6edf3]">
+                        {fmt(
+                          reportingCurrency === "EUR"
+                            ? row.totalCostEUR
+                            : row.totalCostSEK,
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-[#30363d] bg-[#1c2333]">
+                    <td
+                      className="py-3 pr-3 text-sm font-bold text-[#e6edf3]"
+                      colSpan={3}
+                    >
+                      Period Total
+                    </td>
+                    <td className="py-3 px-3 text-right text-sm font-bold text-[#58a6ff]">
+                      {fmt(costBreakdown.periodTotals.capexTrucksEUR)}
+                    </td>
+                    <td className="py-3 px-3 text-right text-sm font-bold text-[#58a6ff]">
+                      {fmt(costBreakdown.periodTotals.capexOneTimeEUR)}
+                    </td>
+                    <td className="py-3 px-3 text-right text-sm font-bold text-[#c9d1d9]">
+                      {fmt(costBreakdown.periodTotals.opexTotalEUR)}
+                    </td>
+                    <td className="py-3 px-3 text-right text-sm font-bold text-[#c9d1d9]">
+                      {fmt(costBreakdown.periodTotals.opexTotalSEK)}
+                    </td>
+                    <td className="py-3 pl-3 text-right text-sm font-bold text-[#e6edf3]">
+                      {fmt(
+                        reportingCurrency === "EUR"
+                          ? costBreakdown.periodTotals.totalCostEUR
+                          : costBreakdown.periodTotals.totalCostSEK,
+                      )}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );

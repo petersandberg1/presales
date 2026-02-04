@@ -30,25 +30,24 @@ input[type="range"].slider {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 8px;
-  border-radius: 4px;
+  height: 4px;
+  border-radius: 2px;
   background: linear-gradient(to right,
     rgb(47, 107, 255) 0%,
     rgb(47, 107, 255) var(--slider-progress, 50%),
-    rgb(51, 65, 85) var(--slider-progress, 50%),
-    rgb(51, 65, 85) 100%
+    rgb(48, 54, 61) var(--slider-progress, 50%),
+    rgb(48, 54, 61) 100%
   );
   outline: none;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
 input[type="range"].slider:hover {
   background: linear-gradient(to right,
-    rgb(59, 130, 246) 0%,
-    rgb(59, 130, 246) var(--slider-progress, 50%),
-    rgb(71, 85, 105) var(--slider-progress, 50%),
-    rgb(71, 85, 105) 100%
+    rgb(88, 166, 255) 0%,
+    rgb(88, 166, 255) var(--slider-progress, 50%),
+    rgb(56, 62, 70) var(--slider-progress, 50%),
+    rgb(56, 62, 70) 100%
   );
 }
 
@@ -56,50 +55,46 @@ input[type="range"].slider:hover {
 input[type="range"].slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: rgb(59, 130, 246);
-  border: 3px solid rgb(30, 41, 59);
+  background: rgb(88, 166, 255);
+  border: 2px solid rgb(13, 17, 23);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(47, 107, 255, 0.4);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transition: all 0.15s ease;
 }
 
 input[type="range"].slider::-webkit-slider-thumb:hover {
-  background: rgb(96, 165, 250);
-  box-shadow: 0 4px 12px rgba(47, 107, 255, 0.6);
-  transform: scale(1.1);
+  background: rgb(121, 192, 255);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 input[type="range"].slider::-webkit-slider-thumb:active {
-  background: rgb(147, 197, 253);
-  box-shadow: 0 2px 6px rgba(47, 107, 255, 0.8);
-  transform: scale(1.05);
+  background: rgb(88, 166, 255);
+  transform: scale(1.1);
 }
 
 /* Slider Thumb - Firefox */
 input[type="range"].slider::-moz-range-thumb {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  background: rgb(59, 130, 246);
-  border: 3px solid rgb(30, 41, 59);
+  background: rgb(88, 166, 255);
+  border: 2px solid rgb(13, 17, 23);
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(47, 107, 255, 0.4);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   transition: all 0.15s ease;
 }
 
 input[type="range"].slider::-moz-range-thumb:hover {
-  background: rgb(96, 165, 250);
-  box-shadow: 0 4px 12px rgba(47, 107, 255, 0.6);
-  transform: scale(1.1);
+  background: rgb(121, 192, 255);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
 input[type="range"].slider::-moz-range-thumb:active {
-  background: rgb(147, 197, 253);
-  box-shadow: 0 2px 6px rgba(47, 107, 255, 0.8);
-  transform: scale(1.05);
+  background: rgb(88, 166, 255);
+  transform: scale(1.1);
 }
 
 /* Slider Track - Firefox */

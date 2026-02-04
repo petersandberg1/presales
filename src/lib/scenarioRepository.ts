@@ -1,6 +1,7 @@
 /**
  * Scenario Repository - localStorage persistence for calculator scenarios
  */
+import type { CostModelInput } from "@/lib/cost/calcCost";
 
 export interface ProductionPlanRow {
   year: number;
@@ -30,6 +31,9 @@ export interface CalculatorScenario {
 
   // Production plan
   productionPlan: ProductionPlanRow[];
+
+  // Cost model (optional – absent in scenarios saved before this feature)
+  costModel?: CostModelInput;
 
   // Computed results (stored for display)
   cycleTimeSeconds: number;

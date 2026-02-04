@@ -290,4 +290,60 @@ test.describe("Calculator", () => {
     await expect(page.getByTestId("trucks-required-2029")).toBeVisible();
     await expect(page.getByTestId("trucks-required-2030")).toBeVisible();
   });
+
+  test("Export PDF button is disabled without results, enabled after calculation", async ({
+    page,
+  }) => {
+    // In Manual mode (beforeEach), results are null until Calculate is clicked
+    const exportBtn = page.getByTestId("export-pdf-button");
+    await expect(exportBtn).toBeVisible();
+    await expect(exportBtn).toBeDisabled();
+
+    // Calculate to produce results
+    await setSlider(page, "distanceLoaded", 1.45);
+    await setSlider(page, "distanceUnloaded", 1.45);
+    await setSlider(page, "speedLoaded", 25);
+    await setSlider(page, "speedUnloaded", 30);
+    await setSlider(page, "loadingTime", 120);
+    await setSlider(page, "unloadingTime", 90);
+    await setSlider(page, "payloadTonnes", 90);
+    await page.getByTestId("calculate-button").click();
+
+    // Once results are visible, export button should be enabled
+    await expect(page.getByTestId("trucks-required-2026")).toBeVisible();
+    await expect(exportBtn).toBeEnabled();
+  });
+
+  test("Export PDF triggers download with correct filename and non-zero size", async ({
+    page,
+  }) => {
+    // Set up inputs and calculate
+    await setSlider(page, "distanceLoaded", 1.45);
+    await setSlider(page, "distanceUnloaded", 1.45);
+    await setSlider(page, "speedLoaded", 25);
+    await setSlider(page, "speedUnloaded", 30);
+    await setSlider(page, "loadingTime", 120);
+    await setSlider(page, "unloadingTime", 90);
+    await setSlider(page, "payloadTonnes", 90);
+    await page.getByTestId("calculate-button").click();
+    await expect(page.getByTestId("trucks-required-2026")).toBeVisible();
+
+    // Fill optional notes to exercise that code path
+    await page.getByTestId("pdf-notes-input").fill("E2E test note");
+
+    // Set up download listener BEFORE clicking the button
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByTestId("export-pdf-button").click();
+    const download = await downloadPromise;
+
+    // Verify filename
+    expect(download.suggestedFilename()).toBe("fleet-sizing-report.pdf");
+
+    // Verify downloaded file is a valid non-empty PDF (> 1 KB)
+    const downloadPath = await download.path();
+    expect(downloadPath).toBeTruthy();
+    const fs = await import("fs");
+    const stats = fs.statSync(downloadPath!);
+    expect(stats.size).toBeGreaterThan(1024);
+  });
 });
